@@ -7,23 +7,25 @@ from keras.layers.recurrent import LSTM
 import pandas as pd
 import numpy as np
 import data_util
+import io
 from embeddings import get_ruwiki_embedding_keras, get_ruwiki_embedding_dict
 
 max_features = 20000
 max_len = 20
 batch_size = 32
 epochs = 3
+cur_model_name = 'bidir_2layer_64_emb_100_drop02everywhere2.h5'
 
 def train_model():
     data = get_data('data/cleaned_data.csv')
     np.random.shuffle(data)
 
     xs, _ = get_xs(data)
-    # xs = [x.decode('utf-8') for x in xs]
     best_words_set = data_util.construct_good_set(xs, max_features, 0)
     # pretrained_embedding_vocab = get_ruwiki_embedding_dict()
-    # data_util.sentences_to_predefined_scalars(xs, best_words_set, pretrained_embedding_vocab)
+
     data_util.sentences_to_scalars(xs, best_words_set)
+    # data_util.sentences_to_predefined_scalars(xs, best_words_set, pretrained_embedding_vocab)
 
     # def count_twitter_words_in_pretrained_vocab(xs_dict, pretrained_vocab):
     #     i = 0
@@ -36,36 +38,30 @@ def train_model():
 
 
     train_test_split = int(0.8 * len(xs))
-    xs_train = xs[:train_test_split]
-    xs_test = xs[train_test_split:]
 
-    xs_train_scalar = keras.preprocessing.sequence.pad_sequences(xs_train, maxlen=max_len, padding='post',
+    xs_train_scalar = keras.preprocessing.sequence.pad_sequences(xs[:train_test_split], maxlen=max_len, padding='post',
                                                                  truncating='post')
-    xs_test_scalar = keras.preprocessing.sequence.pad_sequences(xs_test, maxlen=max_len, padding='post',
+    xs_test_scalar = keras.preprocessing.sequence.pad_sequences(xs[train_test_split:], maxlen=max_len, padding='post',
                                                                 truncating='post')
 
     ys_train, ys_test = get_ys(data, train_test_split)
 
     model = construct_model(max_features, max_len)
 
-    hist = model.fit(
+    model.fit(
         xs_train_scalar, ys_train,
         batch_size=batch_size,
         validation_data=(xs_test_scalar, ys_test),
         epochs=epochs
     )
-    print str(hist)
 
-    # model.save('bidir_1layer_64_emb_pretrained_drop02everywhere.h5')
-    model.save('bidir_3layer_16_emb100_drop02everywhere.h5')
+    model.save(cur_model_name)
 
 
 def get_xs(data):
     xs_str = data[:, 0]
     xs = np.copy(xs_str)
-    for i in range(len(xs)):
-        xs[i] = str(xs[i]).decode('utf-8').split(' ')
-    # xs = [x.decode('utf-8') for x in xs]
+    xs = [str(x).decode('utf-8').split(' ') for x in xs]
     return xs, xs_str
 
 
@@ -83,7 +79,8 @@ def test_model_on_labeled_data():
 
     ys = data[:, 1]
     ys = [0 if y == -1 else y for y in ys]
-    model = load_model('bidir_2layer_64_emb100_drop02everywhere.h5')
+    # model = load_model('bidir_2layer_64_emb100_drop02everywhere.h5')
+    model = load_model(cur_model_name)
     result = [round(r[0]) for r in model.predict(xs_scalar)]
     visual = zip(xs_str, result)
     predicted_and_true = zip(result, ys)
@@ -99,7 +96,6 @@ def test_model_on_unlabeled_data():
     data = get_data('data/cleaned_data_ok.csv')
 
     xs, xs_str = get_xs(data)
-    # xs = [x.decode('utf-8') for x in xs]
     best_words_set = data_util.construct_good_set(xs, max_features, 0)
     # pretrained_embedding_vocab = get_ruwiki_embedding_dict()
     # data_util.sentences_to_predefined_scalars(xs, best_words_set, pretrained_embedding_vocab)
@@ -108,10 +104,14 @@ def test_model_on_unlabeled_data():
     xs_scalar = keras.preprocessing.sequence.pad_sequences(xs, maxlen=max_len, padding='post',
                                                                  truncating='post')
 
-    model = load_model('bidir_2layer_64_emb100_drop02everywhere.h5')
+    model = load_model(cur_model_name)
     result = model.predict(xs_scalar)#[round(r[0]) for r in model.predict(xs_scalar)]
     visual = zip(xs_str, result)
     visual_sorted = list(sorted(visual, key=lambda x:x[1]))
+    with io.open('res_ok.txt', 'w', encoding='utf-8') as file_handler:
+        for item in visual:
+            st = str(item[0]).decode('utf-8')
+            file_handler.write(u"{}\t{}\n".format(st, str(item[1][0])))
     print 3
 
 
@@ -133,9 +133,9 @@ def construct_model(max_features, max_len):
     model = Sequential()
     # model.add(get_ruwiki_embedding_keras())
     model.add(Embedding(max_features, 100, input_length=max_len))
-    model.add(Bidirectional(LSTM(16, dropout=0, recurrent_dropout=0, return_sequences=True)))
-    model.add(Bidirectional(LSTM(16, dropout=0, recurrent_dropout=0, return_sequences=True)))
-    model.add(Bidirectional(LSTM(16, dropout=0, recurrent_dropout=0)))
+    model.add(Bidirectional(LSTM(64, dropout=0.2, recurrent_dropout=0.2, return_sequences=True)))
+    model.add(Bidirectional(LSTM(64, dropout=0.2, recurrent_dropout=0.2)))
+    # model.add(Bidirectional(LSTM(16, dropout=0, recurrent_dropout=0)))
     # model.add(Bidirectional(LSTM(64, dropout=0.2, recurrent_dropout=0.2, return_sequences=True)))
     # model.add(LSTM(64, dropout=0.2, recurrent_dropout=0.2))
     model.add(Dense(1))
@@ -146,6 +146,6 @@ def construct_model(max_features, max_len):
     print(model.summary())
     return model
 
-train_model()
+# train_model()
 # test_model_on_labeled_data()
-# test_model_on_unlabeled_data()
+test_model_on_unlabeled_data()
