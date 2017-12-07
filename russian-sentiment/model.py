@@ -1,3 +1,6 @@
+# coding=utf-8
+import string
+
 import keras
 from keras.layers import Bidirectional, Embedding
 from keras.preprocessing import sequence
@@ -8,13 +11,14 @@ import pandas as pd
 import numpy as np
 import data_util
 import io
-from embeddings import get_ruwiki_embedding_keras, get_ruwiki_embedding_dict
+from keras.utils.np_utils import to_categorical
+import math
 
 max_features = 20000
 max_len = 20
 batch_size = 32
-epochs = 3
-cur_model_name = 'bidir_2layer_64_emb_100_drop02everywhere2.h5'
+epochs = 1
+cur_model_name = 'multiclass_bidir_2layer_16_emb_100_drop02everywhere3.h5'
 
 def train_model():
     data = get_data('data/cleaned_data.csv')
@@ -22,19 +26,7 @@ def train_model():
 
     xs, _ = get_xs(data)
     best_words_set = data_util.construct_good_set(xs, max_features, 0)
-    # pretrained_embedding_vocab = get_ruwiki_embedding_dict()
-
     data_util.sentences_to_scalars(xs, best_words_set)
-    # data_util.sentences_to_predefined_scalars(xs, best_words_set, pretrained_embedding_vocab)
-
-    # def count_twitter_words_in_pretrained_vocab(xs_dict, pretrained_vocab):
-    #     i = 0
-    #     for x in xs_dict:
-    #         if x in pretrained_vocab:
-    #             i += 1
-    #     print i
-    #
-    # count_twitter_words_in_pretrained_vocab(best_words_set, pretrained_embedding_vocab)
 
 
     train_test_split = int(0.8 * len(xs))
@@ -45,6 +37,8 @@ def train_model():
                                                                 truncating='post')
 
     ys_train, ys_test = get_ys(data, train_test_split)
+    ys_train = to_categorical(ys_train)
+    ys_test = to_categorical(ys_test)
 
     model = construct_model(max_features, max_len)
 
@@ -70,54 +64,86 @@ def test_model_on_labeled_data():
 
     xs, xs_str = get_xs(data)
     best_words_set = data_util.construct_good_set(xs, max_features, 0)
-    # pretrained_embedding_vocab = get_ruwiki_embedding_dict()
-    # data_util.sentences_to_predefined_scalars(xs, best_words_set, pretrained_embedding_vocab)
     data_util.sentences_to_scalars_loaded_dict(xs, best_words_set)
 
     xs_scalar = keras.preprocessing.sequence.pad_sequences(xs, maxlen=max_len, padding='post',
                                                                  truncating='post')
 
     ys = data[:, 1]
-    ys = [0 if y == -1 else y for y in ys]
-    # model = load_model('bidir_2layer_64_emb100_drop02everywhere.h5')
+    ys = [0 if y == '-1' else int(0 if math.isnan(float(y)) else y) for y in ys]
     model = load_model(cur_model_name)
     result = [round(r[0]) for r in model.predict(xs_scalar)]
     visual = zip(xs_str, result)
     predicted_and_true = zip(result, ys)
-    pos_cnt = reduce(lambda a, b: a + (1 if b[0] == b[1] and b[0] == 1 else 0), predicted_and_true, 0)
-    neg_cnt = reduce(lambda a, b: a + (1 if b[0] == b[1] and b[0] == 0 else 0), predicted_and_true, 0)
-    print pos_cnt, neg_cnt
-    neg_tot = reduce(lambda a, b: a + (1 if b[0] == 0 else 0), predicted_and_true, 0)
-    pos_tot = reduce(lambda a, b: a + (1 if b[0] == 1 else 0), predicted_and_true, 0)
-    print pos_tot, neg_tot
-    print pos_cnt / float(pos_tot) * 100, neg_cnt / float(neg_tot) * 100
+    true_pos = reduce(lambda a, b: a + (1 if b[0] == b[1] and b[0] == 1 else 0), predicted_and_true, 0)
+    false_pos = reduce(lambda a, b: a + (1 if b[0] != b[1] and b[1] == 0 else 0), predicted_and_true, 0)
+    false_neg = reduce(lambda a, b: a + (1 if b[0] != b[1] and b[1] == 1 else 0), predicted_and_true, 0)
+
+    presision = true_pos / float(true_pos+false_pos)
+    recall = true_pos / float(true_pos + false_neg)
+    print presision
+    print recall
 
 def test_model_on_unlabeled_data():
     data = get_data('data/cleaned_data_ok.csv')
 
     xs, xs_str = get_xs(data)
     best_words_set = data_util.construct_good_set(xs, max_features, 0)
-    # pretrained_embedding_vocab = get_ruwiki_embedding_dict()
-    # data_util.sentences_to_predefined_scalars(xs, best_words_set, pretrained_embedding_vocab)
+
     data_util.sentences_to_scalars_loaded_dict(xs, best_words_set)
 
     xs_scalar = keras.preprocessing.sequence.pad_sequences(xs, maxlen=max_len, padding='post',
                                                                  truncating='post')
 
     model = load_model(cur_model_name)
-    result = model.predict(xs_scalar)#[round(r[0]) for r in model.predict(xs_scalar)]
-    visual = zip(xs_str, result)
-    visual_sorted = list(sorted(visual, key=lambda x:x[1]))
-    with io.open('res_ok.txt', 'w', encoding='utf-8') as file_handler:
-        for item in visual:
-            st = str(item[0]).decode('utf-8')
-            file_handler.write(u"{}\t{}\n".format(st, str(item[1][0])))
+    result = model.predict(xs_scalar)
+    max_indices = [np.argmax(r) for r in result]
+    # strings_and_scores = zip(xs_str, result)
+    pos = []
+    neg = []
+    neutral = []
+
+    for index, i in enumerate(max_indices):
+        if i == 0:
+            neg.append((xs_str[index], result[index]))
+            continue
+        if i == 1:
+            pos.append((xs_str[index], result[index]))
+            continue
+        if i == 2:
+            neutral.append((xs_str[index], result[index]))
+            continue
+        print "Something's wrong"
+    pos = list(sorted(pos, key=lambda x: x[1][1]))
+    neg = list(sorted(neg, key=lambda x: x[1][0]))
+    neutral = list(sorted(neutral, key=lambda x: x[1][2]))
+
+    # visual_sorted = list(sorted(strings_and_scores, key=lambda x:x[1]))
+    def write_to_file(strings_and_scores, path):
+        with io.open(path, 'w', encoding='utf-8') as file_handler:
+            for item in strings_and_scores:
+                st = str(item[0]).decode('utf-8')
+                file_handler.write(u"{}\t{}\n".format(st, item[1]))
+
+    write_to_file(pos, 'data/res_pos.txt')
+    write_to_file(neg, 'data/res_neg.txt')
+    write_to_file(neutral, 'data/res_neutral.txt')
     print 3
 
 
 def get_ys(data, train_test_split):
     ys = data[:, 1]
-    ys = [0 if y == -1 else y for y in ys]
+    identity = string.maketrans('', '')
+    allchars = ''.join(chr(i) for i in xrange(256))
+    nondigits = allchars.translate(identity, string.digits+'-')
+
+    #this code below is very ugly (it was build around edge cases), but it works.
+    ys = [str(y).translate(identity, nondigits) for y in ys]
+    ys = [y if len(y) > 0 else '2' for y in ys]
+    ys = [0 if y == -1 else int(
+        2 if y == '-' or (len(y) > 1 and y[1] == '-') or math.isnan(float(y))
+            else (0 if y == '-1' else y)#.translate(identity, nondigits)
+    ) for y in ys]
     ys_train = ys[:train_test_split]
     ys_test = ys[train_test_split:]
     return ys_train, ys_test
@@ -131,16 +157,12 @@ def get_data(data_path):
 
 def construct_model(max_features, max_len):
     model = Sequential()
-    # model.add(get_ruwiki_embedding_keras())
+
     model.add(Embedding(max_features, 100, input_length=max_len))
-    model.add(Bidirectional(LSTM(64, dropout=0.2, recurrent_dropout=0.2, return_sequences=True)))
-    model.add(Bidirectional(LSTM(64, dropout=0.2, recurrent_dropout=0.2)))
-    # model.add(Bidirectional(LSTM(16, dropout=0, recurrent_dropout=0)))
-    # model.add(Bidirectional(LSTM(64, dropout=0.2, recurrent_dropout=0.2, return_sequences=True)))
-    # model.add(LSTM(64, dropout=0.2, recurrent_dropout=0.2))
-    model.add(Dense(1))
-    model.add(Activation('sigmoid'))
-    model.compile(loss='binary_crossentropy',
+    model.add(Bidirectional(LSTM(16, dropout=0.2, recurrent_dropout=0.2, return_sequences=True)))
+    model.add(Bidirectional(LSTM(16, dropout=0.2, recurrent_dropout=0.2)))
+    model.add(Dense(3, activation='softmax'))
+    model.compile(loss='categorical_crossentropy',
                   optimizer='adam',
                   metrics=['accuracy'])
     print(model.summary())

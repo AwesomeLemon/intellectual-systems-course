@@ -9,32 +9,37 @@ import pymorphy2
 morph = pymorphy2.MorphAnalyzer()
 regex = re.compile('[%s\w]' % re.escape(string.punctuation))
 i = 0
-
+seen = set()
 
 def text_cleaner(text, is_utf=True):
     global i
     i += 1
-    if i % 1000 == 0:
+    if i % 10000 == 0:
         print i
 
-    text = text.lower()
-    if not is_utf:
-        text = text.decode('utf-8')
-    text = regex.sub('', text)
-    res = [morph.parse(word)[0].normal_form for word in text.split()]
+    if type(text) is str:
+        text = text.lower()
+        if not is_utf:
+            text = text.decode('utf-8')
+        text = regex.sub('', text)
+        text = [morph.parse(word)[0].normal_form for word in text.split()]
+        text = ' '.join(text)
 
-    return ' '.join(res)
+    return text
 
 
 def prepare_twitter_dataset():
     positives = pd.read_csv('data/positive.csv', sep=';', header=None)
     negatives = pd.read_csv('data/negative.csv', sep=';', header=None)
+    neutrals = pd.read_csv('data/neutral.csv', sep=';', header=None, error_bad_lines=False)
 
-    dataset = pd.concat([positives, negatives])
+    dataset = pd.concat([positives, negatives, neutrals])
+    # dataset = neutrals
     dataset = dataset[[3, 4]]
     dataset.columns = ['text', 'label']
 
     dataset['text'] = dataset['text'].apply(text_cleaner, is_utf=False)
+    dataset.drop_duplicates('text', inplace=True)
 
     dataset.to_csv('data/cleaned_data.csv', encoding='utf-8')
 
@@ -48,4 +53,5 @@ def prepare_ok_dataset():
     dataset.to_csv('data/cleaned_data_ok.csv', encoding='utf-8')
 
 
-prepare_ok_dataset()
+# prepare_ok_dataset()
+prepare_twitter_dataset()
