@@ -1,18 +1,19 @@
-from keras import Sequential
-from keras.layers import Dense, Dropout
-from keras.models import load_model
 from sklearn import linear_model
 
 from read_data import load_train_features, load_test_users, load_test_features
 import numpy as np
+import construct_dataset
 
-improved_train_features_path = 'data/user_features_train_improved'
-improved_test_features_path = 'data/user_features_test_improved'
-
-def lin_reg():
-    data = np.loadtxt(improved_train_features_path, delimiter=",")
-    x = data[:, :4]
-    y = data[:, 4]
+def lin_reg(is_normalised=True):
+    is_averaged = not is_normalised
+    if is_normalised:
+       data = np.loadtxt(construct_dataset.normalised_train_features_path, delimiter=",")
+       x = data[:, :4]
+       y = data[:, 4]
+    else:
+        data = np.loadtxt(construct_dataset.average_train_features_path, delimiter=",")
+        x = data[:, :2]
+        y = data[:, 2]
     train_test_split = int(0.9 * len(x))
     x_train, x_test = x[:train_test_split], x[train_test_split:]
     y_train, y_test = y[:train_test_split], y[train_test_split:]
@@ -23,21 +24,25 @@ def lin_reg():
     test_users = load_test_users()
     test_users = list(test_users)
     test_users.sort()
-    test_features = np.loadtxt(improved_test_features_path, delimiter=',')
+    if is_normalised:
+        test_features = np.loadtxt(construct_dataset.normalised_test_features_path, delimiter=',')
+    else:
+        test_features = np.loadtxt(construct_dataset.average_test_features_path, delimiter=',')
     # test_features[:, 0] = int(test_features[:, 0])
-    test_features = test_features[test_features[:,0].argsort()]
+    test_features = test_features[test_features[:, 0].argsort()]
     # test_features = test_features[:, 1:]
-    y_stats = np.loadtxt('y_stats')
+    if is_normalised:
+        y_stats = np.loadtxt('y_stats')
     with open('nn_pred.txt', 'w+') as f:
-        for user in test_users:
-            test_feat_ind = 1
-            while test_features[test_feat_ind-1, 0] < user and (test_feat_ind - 1) * 2 < len(test_features):
-                test_feat_ind *= 2
-            while test_features[test_feat_ind-1, 0] != user:
-                test_feat_ind -= 1
-            ind_ = test_features[test_feat_ind, 1:]
-            if test_features[test_feat_ind - 1, 0] != user:
-                print('fuck!')
-            predict = clf.predict(ind_)
-            f.write(str(user) + ',' + str(int(predict * y_stats[1] + y_stats[0])) + '\n')
+        for i, user in enumerate(test_users):
+            user_features = test_features[i, 1:]
+            predict = clf.predict(user_features)
+            if is_normalised:
+                f.write(str(user) + ',' + str(int(predict * y_stats[1] + y_stats[0])) + '\n')
+            else:
+                f.write(str(user) + ',' + str(int(predict[0] * 1000.0)) + '\n')
             print(user)
+
+
+
+lin_reg(False)
