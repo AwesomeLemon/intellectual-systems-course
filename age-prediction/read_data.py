@@ -13,7 +13,8 @@ graph_path = os.path.join(data_path, 'graph')
 demography_path = os.path.join(data_path, 'trainDemography')
 test_users_path = os.path.join(data_path, 'users')
 results_path = 'results'
-extracted_features_path = os.path.join(data_path, 'user_features')
+extracted_features_train_path = os.path.join(data_path, 'user_features_train')
+extracted_features_test_path = os.path.join(data_path, 'user_features_test')
 
 max_id = 47289241 + 1
 
@@ -110,10 +111,10 @@ def load_friends_birthdays(birth_dates, test_users):
 def bin(s):
     return str(s) if s <= 1 else bin(s >> 1) + str(s & 1)
 
-def store_features(user_friends_data_matrix, train_users):
-    with open(extracted_features_path, 'w+') as f:
+def store_features(user_friends_data_matrix, users, birth_dates, path):
+    with open(path, 'w+') as f:
         i = 0
-        for user in train_users:
+        for user in users:
             friends_features = user_friends_data_matrix[user, :].data
             friends_bds = friends_features#[(friend_and_mask >> 21) - 36500 for friend_and_mask in friends_features]
             cnt_bds = len(friends_bds)
@@ -127,22 +128,28 @@ def store_features(user_friends_data_matrix, train_users):
                 sum_middle = sum_bds - friends_bds[0] - friends_bds[1] - friends_bds[-1] - friends_bds[-2]
             else:
                 sum_middle = sum_bds
-            f.write(str(user) + ',' + str(sum_bds) + ',' + str(sum_middle) + ',' + str(cnt_bds) + '\n')
+            f.write(str(user) + ',' + str(sum_bds) + ',' + str(sum_middle) + ',' + str(cnt_bds) + ',' + str(birth_dates[user]) + '\n')
             i += 1
             if i % 10000 == 0:
                 print(i)
                 gc.collect()
 
-def load_features():
-    return pd.read_csv(extracted_features_path, delimiter=",")
+def load_train_features():
+    return np.array(pd.read_csv(extracted_features_train_path, delimiter=",", header=None).as_matrix())
+
+def load_test_features():
+    csv = pd.read_csv(extracted_features_test_path, delimiter=",", header=None)
+    return np.array(csv.as_matrix())
 
 if __name__ == '__main__':
     test_users = load_test_users()
     birth_dates = load_birth_dates()
     friends_bds, all_users = load_friends_birthdays(birth_dates, test_users)
     train_users = all_users - test_users
-    store_features(friends_bds, train_users)
+    # store_features(friends_bds, train_users, birth_dates, extracted_features_train_path)
+    # store_features(friends_bds, test_users, birth_dates, extracted_features_test_path)
 
+    #predicting via average:
     # with open('pred.txt', 'w') as f:
     #     for user, user_friends in enumerate(friends_bds):
     #         if user_friends is None:
@@ -154,3 +161,16 @@ if __name__ == '__main__':
     #         predicted_age = sum(user_friends) / len(user_friends)
     #         # predicted_age = user_friends[len(user_friends) / 2]
     #         f.write(str(user) + ',' + str(predicted_age) + '\n')
+
+    #enriching features via average
+    with open('pred.txt', 'w') as f:
+        for user, user_friends in enumerate(friends_bds):
+            if user_friends is None:
+                continue
+            user_friends.sort()
+            if len(user_friends) > 5:
+                # user_friends = user_friends[int(len(user_friends) * .05): int(len(user_friends) * .95)]
+                user_friends = user_friends[2: len(user_friends) - 2]
+            predicted_age = sum(user_friends) / len(user_friends)
+            # predicted_age = user_friends[len(user_friends) / 2]
+            f.write(str(user) + ',' + str(predicted_age) + '\n')
