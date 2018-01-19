@@ -33,14 +33,14 @@ def lin_reg(is_normalised=True):
     # test_features = test_features[:, 1:]
     if is_normalised:
         y_stats = np.loadtxt('y_stats')
-    with open('nn_pred.txt', 'w+') as f:
+    with open('pred.txt', 'w+') as f:
         for i, user in enumerate(test_users):
             user_features = test_features[i, 1:]
             predict = clf.predict(user_features)
             if is_normalised:
                 f.write(str(user) + ',' + str(int(predict * y_stats[1] + y_stats[0])) + '\n')
             else:
-                f.write(str(user) + ',' + str(int(predict[0] * 1000.0)) + '\n')
+                f.write(str(user) + ',' + str(int(predict * 1000.0)) + '\n')
             print(user)
 
 
