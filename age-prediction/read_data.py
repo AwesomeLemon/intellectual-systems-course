@@ -13,8 +13,11 @@ graph_path = os.path.join(data_path, 'graph')
 demography_path = os.path.join(data_path, 'trainDemography')
 test_users_path = os.path.join(data_path, 'users')
 results_path = 'results'
-extracted_features_train_path = os.path.join(data_path, 'user_features_train')
+extracted_features_train_path = os.path.join(data_path, 'user_features_train2')
+additional_features_train_path = os.path.join(data_path, 'add_features_train')
 extracted_features_test_path = os.path.join(data_path, 'user_features_test')
+additional_features_test_path = os.path.join(data_path, 'add_features_test')
+
 
 max_id = 47289241 + 1
 
@@ -111,6 +114,30 @@ def load_friends_birthdays(birth_dates, test_users):
     store_obj(all_users, all_users_path)
     return csr, all_users
 
+def save_parent_bdays(birth_dates, test_users):
+    test_parents_birth_dates_path = 'data/parents_birthdays'
+    if os.path.isfile(test_parents_birth_dates_path):
+        return retrieve_obj(test_parents_birth_dates_path)
+    user_parent_bd_dict = {}
+    i = 0
+    for file in [f for f in os.listdir(graph_path) if f.startswith('part')]:
+        for line in csv.reader(open(os.path.join(graph_path, file)),
+                               delimiter='\t'):
+            user = int(line[0])
+            if user in test_users:
+                for friendship in line[1][2:len(line[1]) - 2].split('),('):
+                    parts = friendship.split(',')
+                    friend = int(parts[0])
+                    mask = int(parts[1])
+                    if mask == 8:
+                        user_parent_bd_dict[user] = birth_dates[friend]
+                        break
+                i += 1
+                print i
+    print 'len = ' + str(len(user_parent_bd_dict))
+    store_obj(user_parent_bd_dict, test_parents_birth_dates_path)
+    return user_parent_bd_dict
+
 def bin(s):
     return str(s) if s <= 1 else bin(s >> 1) + str(s & 1)
 
@@ -128,9 +155,11 @@ def store_features(user_friends_data_matrix, users, birth_dates, path, is_train=
                     continue
                 else:
                     friends_bds = [4000]
+                    cnt_bds = 1
 
-            # del friends_features
             friends_bds.sort()
+            sum_minus20percent = sum(friends_bds[int(0.2*len(friends_bds)):int(0.8*len(friends_bds)) + 1])
+            # f.write(str(user) + ',' + str(sum_minus20percent) + '\n')
             # [friend_and_mask & 4194303 for friend_and_mask in friends_features]
             sum_bds = sum(friends_bds)
             # if user == 1811:
@@ -147,9 +176,10 @@ def store_features(user_friends_data_matrix, users, birth_dates, path, is_train=
                 sum_middle = sum_bds - friends_bds[0] - friends_bds[1] - friends_bds[-1] - friends_bds[-2]
             else:
                 sum_middle = sum_bds
+
             user_bd = birth_dates[user]
-            f.write(str(user) + ',' + str(sum_bds) + ',' + str(sum_middle) + ',' + str(cnt_bds) + ',' + str(
-                user_bd) + '\n')
+            f.write(str(user) + ',' + str(sum_bds) + ',' + str(sum_middle) + ',' + str(cnt_bds) + ',' +
+                    str(sum_minus20percent) +',' + str(user_bd) + '\n')
             i += 1
             if i % 10000 == 0:
                 print(i)
@@ -165,40 +195,41 @@ def load_test_features():
 if __name__ == '__main__':
     test_users = load_test_users()
     birth_dates = load_birth_dates()
-    friends_bds, all_users = load_friends_birthdays(birth_dates, test_users)
-
-    train_users = all_users - test_users
-    # store_features(friends_bds, train_users, birth_dates, extracted_features_train_path)
-    store_features(friends_bds, test_users, birth_dates, extracted_features_test_path, False)
-    # friends_bds = np.load('data/friends_birthdays.npy')
-    # #predicting via average:
-    # with open('pred.txt', 'w') as f:
-    #     # for user in test_users:
-    #     for user, user_friends in enumerate(friends_bds):
-    #         # user_friends = friends_bds[user, :].data
-    #         if user_friends is None:
-    #             continue
-    #         print(user)
-    #         print(user_friends)
-    #         # user_friends.sort()
-    #         if len(user_friends) > 5:
-    #             # user_friends = user_friends[int(len(user_friends) * .05): int(len(user_friends) * .95)]
-    #             user_friends = user_friends[2: len(user_friends) - 2]
-    #         predicted_age = sum(user_friends) / len(user_friends)
-    #         # predicted_age = user_friends[len(user_friends) / 2]
-    #         f.write(str(user) + ',' + str(predicted_age) + '\n')
+    save_parent_bdays(birth_dates, test_users)
+    # friends_bds, all_users = load_friends_birthdays(birth_dates, test_users)
     #
-    # #enriching features via average
+    # train_users = all_users - test_users
+    # # store_features(friends_bds, train_users, birth_dates, extracted_features_train_path)
+    # store_features(friends_bds, test_users, birth_dates, extracted_features_test_path, False)
+    # # friends_bds = np.load('data/friends_birthdays.npy')
+    # # #predicting via average:
     # # with open('pred.txt', 'w') as f:
+    # #     # for user in test_users:
     # #     for user, user_friends in enumerate(friends_bds):
+    # #         # user_friends = friends_bds[user, :].data
     # #         if user_friends is None:
     # #             continue
-    # #         user_friends.sort()
+    # #         print(user)
+    # #         print(user_friends)
+    # #         # user_friends.sort()
     # #         if len(user_friends) > 5:
     # #             # user_friends = user_friends[int(len(user_friends) * .05): int(len(user_friends) * .95)]
     # #             user_friends = user_friends[2: len(user_friends) - 2]
-    # #         user_sum = sum(user_friends)
-    # #         print(user, user_sum)
-    # #         predicted_age = user_sum / len(user_friends)
+    # #         predicted_age = sum(user_friends) / len(user_friends)
     # #         # predicted_age = user_friends[len(user_friends) / 2]
     # #         f.write(str(user) + ',' + str(predicted_age) + '\n')
+    # #
+    # # #enriching features via average
+    # # # with open('pred.txt', 'w') as f:
+    # # #     for user, user_friends in enumerate(friends_bds):
+    # # #         if user_friends is None:
+    # # #             continue
+    # # #         user_friends.sort()
+    # # #         if len(user_friends) > 5:
+    # # #             # user_friends = user_friends[int(len(user_friends) * .05): int(len(user_friends) * .95)]
+    # # #             user_friends = user_friends[2: len(user_friends) - 2]
+    # # #         user_sum = sum(user_friends)
+    # # #         print(user, user_sum)
+    # # #         predicted_age = user_sum / len(user_friends)
+    # # #         # predicted_age = user_friends[len(user_friends) / 2]
+    # # #         f.write(str(user) + ',' + str(predicted_age) + '\n')
