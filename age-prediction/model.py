@@ -1,7 +1,6 @@
 from keras import Sequential
 from keras.layers import Dense, Dropout
 from keras.models import load_model
-from sklearn import linear_model
 
 from read_data import load_train_features, load_test_users, load_test_features
 import numpy as np
